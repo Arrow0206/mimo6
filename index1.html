@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>我的雲端帳本</title>
+    <!-- 引入 LINE LIFF SDK -->
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        :root {
+            --bg-expense: #F4CCCC;
+            --bg-income: #E2EFDA;
+            --bg-debt: #D9E1F2;
+            --card-bg: #FFFDE7;
+            --btn-category: #FFE599;
+            --btn-num-current: #F4CCCC;
+            --btn-op: #B4C6E7;
+            --btn-save: #8FAADC;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-expense);
+            margin: 0;
+            padding: 6px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            transition: background-color 0.3s ease;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 380px; /* 手機版專用精簡寬度 */
+            background-color: var(--card-bg);
+            border-radius: 16px;
+            padding: 10px 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            border: 2px solid #333; 
+        }
+
+        .tabs {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 8px;
+            font-size: 17px;
+            font-weight: bold;
+            border-bottom: 2px solid #333;
+            padding-bottom: 2px;
+        }
+
+        .tab { cursor: pointer; color: #7F7F7F; padding: 2px 10px; position: relative; }
+        .tab.active.expense { color: #C00000; }
+        .tab.active.income { color: #375623; }
+        .tab.active.debt { color: #1F4E78; }
+        .tab.active::after {
+            content: ''; position: absolute; bottom: -4px; left: 0; right: 0; height: 3px; border-radius: 2px;
+        }
+        .tab.active.expense::after { background-color: #C00000; }
+        .tab.active.income::after { background-color: #375623; }
+        .tab.active.debt::after { background-color: #1F4E78; }
+
+        /* 看板區 */
+        .summary-dashboard {
+            background-color: #FFF;
+            border: 2px dashed #333;
+            border-radius: 8px;
+            padding: 6px 10px;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: #404040;
+        }
+        .summary-row { display: flex; justify-content: space-between; margin-bottom: 1px; }
+        .summary-row.total {
+            border-top: 1px solid #333;
+            padding-top: 2px;
+            margin-top: 2px;
+            font-weight: bold;
+            font-size: 14px;
+            color: #000;
+        }
+
+        .delete-btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 4px;
+            margin-top: 6px;
+        }
+
+        .dashboard-action-btn {
+            background: #FFFFFF;
+            border: 1px solid #333;
+            color: #333;
+            border-radius: 6px;
+            padding: 4px 0;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 1px 0 #333;
+        }
+        .dashboard-action-btn.send { background: #E2EFDA; color: #375623; border-color: #375623; }
+        .dashboard-action-btn.del { background: #FFF0F0; color: #C00000; border-color: #C00000; }
+
+        .form-section { display: flex; align-items: center; gap: 4px; font-size: 13px; color: #333; margin-bottom: 6px; }
+        .form-section input {
+            flex: 1; border: 2px solid #333; background: #FFF; border-radius: 6px; padding: 4px 6px; font-size: 13px; outline: none;
+        }
+        .form-section input[type="date"] { flex: none; width: 130px; }
+
+        .categories-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 8px; }
+        .cat-btn {
+            background-color: var(--btn-category); border: 2px solid #333; border-radius: 12px; padding: 5px 2px; font-size: 12px;
+            color: #333; font-weight: bold; cursor: pointer; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 1px 0 #333;
+        }
+        .cat-btn.selected { background-color: #FFC000; box-shadow: inset 0 2px 4px rgba(0,0,0,0.15); }
+        
+        .cat-btn.ctrl-add { background-color: #E2EFDA; color: #375623; border-color: #375623; }
+        .cat-btn.ctrl-del { background-color: #FCE4D6; color: #C00000; border-color: #C00000; }
+
+        .amount-display {
+            display: flex; justify-content: space-between; align-items: center; background-color: #FFE599; border: 2px solid #333;
+            border-radius: 8px; padding: 6px 10px; font-size: 24px; font-weight: bold; color: #333; margin-bottom: 8px;
+        }
+
+        .calculator-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 8px; }
+        .calc-btn {
+            font-size: 18px; font-weight: bold; padding: 10px 0; border: 2px solid #333; border-radius: 8px; cursor: pointer;
+            background-color: var(--btn-num-current); color: #333; display: flex; justify-content: center; align-items: center; box-shadow: 0 2px 0 #333;
+        }
+        .calc-btn.op { background-color: var(--btn-op); }
+        .calc-btn.equal { background-color: #9BC2E6; }
+        .calc-btn.backspace { background-color: #FCE4D6; color: #C00000; }
+
+        .bottom-actions { display: grid; grid-template-columns: 3fr 1fr; gap: 5px; }
+        .save-btn {
+            background-color: var(--btn-save); border: 2px solid #333; border-radius: 8px; font-size: 15px; font-weight: bold; color: #333; cursor: pointer;
+            display: flex; justify-content: center; align-items: center; box-shadow: 0 2px 0 #333;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="tabs">
+        <div class="tab active expense" id="tab-expense" onclick="switchTab('expense')">支出</div>
+        <div class="tab" id="tab-income" onclick="switchTab('income')">收入</div>
+        <div class="tab" id="tab-debt" onclick="switchTab('debt')">負債</div>
+    </div>
+
+    <!-- 看板區 -->
+    <div class="summary-dashboard">
+        <div class="summary-row"><span>📈 本月總收入:</span><span id="sum-income">$0</span></div>
+        <div class="summary-row"><span>📉 本月總支出:</span><span id="sum-expense">$0</span></div>
+        <div class="summary-row"><span>⚠️ 未結總負債:</span><span id="sum-debt">$0</span></div>
+        <div class="summary-row total"><span>💰 預估淨資產:</span><span id="sum-net">$0</span></div>
+        
+        <div class="delete-btn-group">
+            <button class="dashboard-action-btn send" onclick="sendRecordsToLINE()">📋 傳送明細</button>
+            <button class="dashboard-action-btn del" onclick="deleteSingleRecord()">🗑️ 刪單筆</button>
+            <button class="dashboard-action-btn del" onclick="clearAllDataFromSystem()">💥 全清空</button>
+        </div>
+    </div>
+
+    <div class="form-section">
+        <span>📅 日期：</span>
+        <input type="date" id="date-picker">
+    </div>
+    <div class="form-section">
+        <span>📝 說明：</span>
+        <input type="text" id="description" placeholder="備註說明（選填）">
+    </div>
+
+    <!-- 分類按鈕區（新增/刪除鈕已收納在其他後面） -->
+    <div class="categories-grid" id="categories-container"></div>
+
+    <div class="amount-display">
+        <span>$</span>
+        <span id="display-value">0</span>
+    </div>
+
+    <!-- 計算機鍵盤（含 ⌫ 退格鍵與 = 等於鍵） -->
+    <div class="calculator-grid">
+        <button class="calc-btn" onclick="inputNum('7')">7</button>
+        <button class="calc-btn" onclick="inputNum('8')">8</button>
+        <button class="calc-btn" onclick="inputNum('9')">9</button>
+        <button class="calc-btn op" onclick="setOp('÷')">÷</button>
+
+        <button class="calc-btn" onclick="inputNum('4')">4</button>
+        <button class="calc-btn" onclick="inputNum('5')">5</button>
+        <button class="calc-btn" onclick="inputNum('6')">6</button>
+        <button class="calc-btn op" onclick="setOp('×')">×</button>
+
+        <button class="calc-btn" onclick="inputNum('1')">1</button>
+        <button class="calc-btn" onclick="inputNum('2')">2</button>
+        <button class="calc-btn" onclick="inputNum('3')">3</button>
+        <button class="calc-btn op" onclick="setOp('-')">-</button>
+
+        <button class="calc-btn" onclick="inputNum('0')">0</button>
+        <button class="calc-btn" onclick="inputNum('.')">.</button>
+        <button class="calc-btn backspace" onclick="backspace()">⌫</button>
+        <button class="calc-btn op" onclick="setOp('+')">+</button>
+    </div>
+
+    <div class="bottom-actions">
+        <button class="save-btn" id="btn-save" onclick="saveData()">儲存</button>
+        <button class="calc-btn equal" onclick="calculate()">=</button>
+    </div>
+</div>
+
+<script>
+    // ⭕ 部署完成的 Google Apps Script 網址
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbw6gjHMkvcbk_5vDfJgHrXEw3v_C0jsCbzuUZiCAf3PbsIKUk1pBTLqWjzjTU6xlecC6A/exec";
+
+    // 預設分類選單，支援動態增加/刪除並儲存在本機記憶體
+    let categoriesData = JSON.parse(localStorage.getItem('my_categories_data')) || {
+        expense: ['飲食', '日常', '交通', '娛樂', '醫療', '房租', '手機費', '機車貸款', '其他'],
+        income: ['薪水', '獎金', '兼職', '投資', '零用錢', '共同基金', '其他'],
+        debt: ['信用卡', '朋友借貸', '期分付款', '就學貸款', '銀行貸款', '其他'] 
+    };
+
+    let currentType = 'expense';
+    let selectedCategory = '';
+    let systemRecords = [];
+    
+    let displayValue = '0';
+    let previousValue = '';
+    let currentOperator = null;
+    let shouldResetDisplay = false;
+
+    window.onload = function() {
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('date-picker').value = today;
+        renderCategories();
+        fetchSummaryData(); 
+
+        if (typeof liff !== 'undefined') {
+            liff.init({ liffId: "YOUR_LIFF_ID" }) 
+                .then(() => { console.log("LIFF 載入成功"); })
+                .catch((err) => { console.error(err); });
+        }
+    };
+
+    function saveCategoriesToStorage() {
+        localStorage.setItem('my_categories_data', JSON.stringify(categoriesData));
+    }
+
+    function switchTab(type) {
+        currentType = type;
+        selectedCategory = '';
+        
+        document.getElementById('tab-expense').className = 'tab' + (type === 'expense' ? ' active expense' : '');
+        document.getElementById('tab-income').className = 'tab' + (type === 'income' ? ' active income' : '');
+        document.getElementById('tab-debt').className = 'tab' + (type === 'debt' ? ' active debt' : '');
+        
+        if(type === 'expense') {
+            document.body.style.backgroundColor = 'var(--bg-expense)';
+            document.documentElement.style.setProperty('--btn-num-current', '#F4CCCC');
+        } else if(type === 'income') {
+            document.body.style.backgroundColor = 'var(--bg-income)';
+            document.documentElement.style.setProperty('--btn-num-current', '#E2EFDA');
+        } else {
+            document.body.style.backgroundColor = 'var(--bg-debt)';
+            document.documentElement.style.setProperty('--btn-num-current', '#D9E1F2');
+        }
+        
+        renderCategories();
+        clearAll();
+    }
+
+    function fetchSummaryData() {
+        if (!GAS_URL) return;
+        fetch(`${GAS_URL}?action=getSummary`)
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('sum-income').textContent = `$${data.income || 0}`;
+            document.getElementById('sum-expense').textContent = `$${data.expense || 0}`;
+            document.getElementById('sum-debt').textContent = `$${data.debt || 0}`;
+            document.getElementById('sum-net').textContent = `$${data.net || 0}`;
+            systemRecords = data.records || [];
+        }).catch(err => console.log("連線中..."));
+    }
+
+    function sendRecordsToLINE() {
+        if (systemRecords.length === 0) {
+            alert('目前雲端帳本裡面沒有任何紀錄可供傳送喔！');
+            return;
+        }
+
+        let msgText = "📊 【雲端帳本紀錄明細清單】\n----------------------\n";
+        systemRecords.forEach((item, index) => {
+            let descText = item.description ? ` (${item.description})` : '';
+            msgText += `${index + 1}. [${item.type}] ${item.category}: $${item.amount}元${descText}\n`;
+        });
+
+        const incText = document.getElementById('sum-income').textContent;
+        const expText = document.getElementById('sum-expense').textContent;
+        const debtText = document.getElementById('sum-debt').textContent;
+        const netText = document.getElementById('sum-net').textContent;
+
+        msgText += "----------------------\n";
+        msgText += `📈 總收入: ${incText}\n📉 總支出: ${expText}\n⚠️ 總負債: ${debtText}\n💰 淨資產: ${netText}`;
+
+        if (typeof liff !== 'undefined' && liff.isInClient()) {
+            liff.sendMessages([{ type: 'text', text: msgText }]).then(() => {
+                alert('已成功將明細傳送到 LINE 聊天室！');
+            }).catch((err) => {
+                alert('傳送失敗：' + err);
+            });
+        } else {
+            alert("明細內容如下：\n\n" + msgText);
+        }
+    }
+
+    function renderCategories() {
+        const container = document.getElementById('categories-container');
+        container.innerHTML = '';
+        
+        categoriesData[currentType].forEach(cat => {
+            const btn = document.createElement('button');
+            btn.className = 'cat-btn';
+            btn.textContent = cat;
+            if(selectedCategory === cat) btn.classList.add('selected');
+            btn.onclick = () => {
+                if (selectedCategory === cat) {
+                    selectedCategory = ''; btn.classList.remove('selected');
+                } else {
+                    document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('selected'));
+                    selectedCategory = cat; btn.classList.add('selected');
+                }
+            };
+            container.appendChild(btn);
+        });
+
+        const addBtn = document.createElement('button');
+        addBtn.className = 'cat-btn ctrl-add';
+        addBtn.textContent = '➕ 新增';
+        addBtn.onclick = addNewCategoryFromTop;
+        container.appendChild(addBtn);
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'cat-btn ctrl-del';
+        delBtn.textContent = '❌ 刪除';
+        delBtn.onclick = deleteCategoryFromTop;
+        container.appendChild(delBtn);
+    }
+
+    function addNewCategoryFromTop() {
+        let typeChineseName = currentType === "income" ? "收入" : (currentType === "debt" ? "負債" : "支出");
+        const newCatName = prompt(`請輸入你想加在【${typeChineseName}】的新選項：`);
+        if (newCatName && newCatName.trim() !== '') {
+            const trimmedName = newCatName.trim();
+            if (!categoriesData[currentType].includes(trimmedName)) {
+                categoriesData[currentType].push(trimmedName);
+                selectedCategory = trimmedName; 
+                saveCategoriesToStorage();
+                renderCategories(); 
+            } else {
+                alert('這個選項已經存在囉！');
+            }
+        }
+    }
+
+    function deleteCategoryFromTop() {
+        let typeChineseName = currentType === "income" ? "收入" : (currentType === "debt" ? "負債" : "支出");
+        const list = categoriesData[currentType];
+
+        if (list.length === 0) {
+            alert(`【${typeChineseName}】目前沒有任何選項可供刪除！`);
+            return;
+        }
+
+        let promptMsg = `請輸入您想從【${typeChineseName}】中「刪除」的選項編號數字：\n\n`;
+        list.forEach((item, index) => {
+            promptMsg += `【${index + 1}】 ${item}\n`;
+        });
+
+        const userInput = prompt(promptMsg);
+        if (userInput && !isNaN(userInput)) {
+            const idx = parseInt(userInput) - 1;
+            if (idx >= 0 && idx < list.length) {
+                const targetName = list[idx];
+                if (confirm(`確定要刪除【${targetName}】按鈕嗎？`)) {
+                    categoriesData[currentType].splice(idx, 1);
+                    if (selectedCategory === targetName) selectedCategory = '';
+                    saveCategoriesToStorage();
+                    renderCategories(); 
+                }
+            } else {
+                alert('輸入的編號不在選項清單內喔！');
+            }
+        }
+    }
+
+    function deleteSingleRecord() {
+        if (systemRecords.length === 0) {
+            alert('系統內目前沒有任何紀錄可供刪除！');
+            return;
+        }
+
+        let promptMsg = "請輸入您想刪除的【紀錄編號】數字：\n\n";
+        systemRecords.forEach((item, index) => {
+            promptMsg += `【${index + 1}】 ${item.type} | ${item.category} ($${item.amount})\n`;
+        });
+
+        const userInput = prompt(promptMsg);
+        if (userInput && !isNaN(userInput)) {
+            const idx = parseInt(userInput) - 1;
+            if (idx >= 0 && idx < systemRecords.length) {
+                const target = systemRecords[idx];
+                if (confirm(`確定要刪除這筆【${target.category} $${target.amount}】嗎？`)) {
+                    fetch(GAS_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({ action: "deleteRow", rowIndex: target.row })
+                    })
+                    .then(res => res.json())
+                    .then(() => {
+                        alert('已成功刪除！');
+                        fetchSummaryData();
+                    });
+                }
+            } else {
+                alert('輸入的編號不在清單內喔！');
+            }
+        }
+    }
+
+    function clearAllDataFromSystem() {
+        if (confirm('⚠️ 警告：確定要清空所有試算表內的記帳紀錄嗎？')) {
+            fetch(GAS_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: "clearAllData" })
+            })
+            .then(res => res.json())
+            .then(() => {
+                alert('所有紀錄已清空，看板金額已歸零！');
+                fetchSummaryData();
+            });
+        }
+    }
+
+    function inputNum(num) {
+        if (displayValue === '0' && num !== '.' || shouldResetDisplay) {
+            displayValue = num; shouldResetDisplay = false;
+        } else {
+            if (num === '.' && displayValue.includes('.')) return;
+            displayValue += num;
+        }
+        document.getElementById('display-value').textContent = displayValue;
+    }
+
+    function backspace() {
+        if (shouldResetDisplay) return;
+        displayValue = displayValue.length > 1 ? displayValue.slice(0, -1) : '0';
+        document.getElementById('display-value').textContent = displayValue;
+    }
+
+    function setOp(op) {
+        if (currentOperator !== null) calculate();
+        previousValue = displayValue; currentOperator = op; shouldResetDisplay = true;
+    }
+
+    function calculate() {
+        if (currentOperator === null || shouldResetDisplay) return;
+        let result = 0;
+        const prev = parseFloat(previousValue);
+        const current = parseFloat(displayValue);
+        switch (currentOperator) {
+            case '+': result = prev + current; break;
+            case '-': result = prev - current; break;
+            case '×': result = prev * current; break;
+            case '÷': current === 0 ? result = '錯誤' : result = prev / current; break;
+        }
+        displayValue = typeof result === 'number' ? parseFloat(result.toFixed(8)).toString() : result;
+        currentOperator = null;
+        document.getElementById('display-value').textContent = displayValue;
+    }
+
+    function clearAll() {
+        displayValue = '0'; previousValue = ''; currentOperator = null; shouldResetDisplay = false;
+        document.getElementById('display-value').textContent = displayValue;
+    }
+
+    function saveData() {
+        const date = document.getElementById('date-picker').value;
+        const description = document.getElementById('description').value || '無說明';
+        let typeText = currentType === 'income' ? '收入' : (currentType === 'debt' ? '負債' : '支出');
+        
+        if (!selectedCategory) { alert('請選擇一個分類！'); return; }
+        if (parseFloat(displayValue) <= 0 || displayValue === '錯誤') { alert('請輸入有效的金額！'); return; }
+
+        const saveBtn = document.getElementById('btn-save');
+        saveBtn.textContent = "儲存中..."; saveBtn.disabled = true;
+
+        const payload = { action: "appendRow", date: date, typeText: typeText, category: selectedCategory, description: description, amount: displayValue };
+
+        fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) })
+        .then(res => res.json())
+        .then(resData => {
+            alert(`【記帳成功】已同步更新雲端試算表！`);
+            clearAll();
+            document.getElementById('description').value = '';
+            saveBtn.textContent = "儲存"; saveBtn.disabled = false;
+            fetchSummaryData(); 
+        });
+    }
+</script>
+</body>
+</html>
